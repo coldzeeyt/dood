@@ -37,7 +37,15 @@
     cursor: pointer;
     border: none;
   }
-  #status { min-height: 1.2rem; font-size: 0.9rem; }
+  #status, #autopilot-status { min-height: 1.2rem; font-size: 0.9rem; }
+  hr {
+    width: min(90vw, 360px);
+    border: none;
+    border-top: 1px solid #ddd;
+    margin: 2rem 0 1.5rem;
+  }
+  #autopilot-form button { background: #567; }
+  p.hint { color: #888; font-size: 0.85rem; width: min(90vw, 360px); margin: 0.5rem 0 0; }
 </style>
 </head>
 <body>
@@ -51,9 +59,19 @@
   </form>
   <div id="status"></div>
 
+  <hr>
+
+  <form id="autopilot-form">
+    <input type="password" name="password" placeholder="Admin password" required>
+    <button type="submit">🎲 Get a random dog now</button>
+  </form>
+  <p class="hint">Fetches a random dog photo and name automatically instead of uploading your own.</p>
+  <div id="autopilot-status"></div>
+
   <script src="../config.js"></script>
   <script>
     const API_BASE = window.DOOD_API_BASE || '';
+
     const form = document.getElementById('form');
     const status = document.getElementById('status');
     form.addEventListener('submit', async (e) => {
@@ -67,6 +85,21 @@
       }
       status.textContent = 'Uploaded! The homepage is now updated.';
       form.reset();
+    });
+
+    const autopilotForm = document.getElementById('autopilot-form');
+    const autopilotStatus = document.getElementById('autopilot-status');
+    autopilotForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      autopilotStatus.textContent = 'Fetching a dog...';
+      const res = await fetch(`${API_BASE}/api/autopilot`, { method: 'POST', body: new FormData(autopilotForm) });
+      const data = await res.json();
+      if (!res.ok) {
+        autopilotStatus.textContent = `Error: ${data.error || 'failed'}`;
+        return;
+      }
+      autopilotStatus.textContent = `Got it! ${data.name} is now the dog of the day.`;
+      autopilotForm.reset();
     });
   </script>
 </body>

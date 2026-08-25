@@ -11,7 +11,6 @@ const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 const CURRENT_FILE = path.join(DATA_DIR, 'current.json');
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 const AUTOPILOT_ENABLED = process.env.AUTOPILOT_ENABLED !== 'false';
-const AUTOPILOT_INTERVAL_MS = (Number(process.env.AUTOPILOT_INTERVAL_HOURS) || 24) * 60 * 60 * 1000;
 
 const AUTOPILOT_NAMES = [
   'Buddy', 'Bella', 'Max', 'Charlie', 'Luna', 'Cooper', 'Daisy', 'Rocky',
@@ -58,20 +57,47 @@ async function fetchAutopilotDog() {
   };
 }
 
-async function runAutopilotIfDue() {
-  if (!AUTOPILOT_ENABLED) return;
-  const current = readCurrent();
-  const isStale = !current || (Date.now() - new Date(current.updatedAt).getTime()) >= AUTOPILOT_INTERVAL_MS;
-  if (!isStale) return;
+async function runAutopilot() {
   try {
-    const previous = current;
+    const previous = readCurrent();
     const entry = await fetchAutopilotDog();
     writeCurrent(entry);
     deletePreviousUpload(previous);
     console.log(`Autopilot picked ${entry.name}`);
+    return entry;
   } catch (err) {
     console.error('Autopilot fetch failed:', err.message);
+    throw err;
   }
+}
+
+function isSameLocalDay(a, b) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+// Runs autopilot once at server start if there's nothing to show yet, and
+// otherwise only in the few minutes after local midnight each day, so it
+// never kicks in mid-day and overrides a manual upload. The other way to
+// get a fresh autopilot dog is the password-protected /api/autopilot route.
+function scheduleMidnightAutopilot() {
+  if (!AUTOPILOT_ENABLED) return;
+
+  const checkAndRun = () => {
+    const current = readCurrent();
+    const now = new Date();
+    if (!current) {
+      runAutopilot();
+      return;
+    }
+    const updated = new Date(current.updatedAt);
+    if (isSameLocalDay(updated, now)) return;
+    if (now.getHours() === 0 && now.getMinutes() < 5) {
+      runAutopilot();
+    }
+  };
+
+  checkAndRun();
+  setInterval(checkAndRun, 60 * 1000);
 }
 
 function passwordMatches(candidate) {
@@ -139,8 +165,19 @@ app.post('/api/upload', (req, res) => {
   });
 });
 
+app.post('/api/autopilot', multer().none(), async (req, res) => {
+  if (!passwordMatches(req.body.password)) {
+    return res.status(401).json({ error: 'Wrong password' });
+  }
+  try {
+    const entry = await runAutopilot();
+    res.json(entry);
+  } catch {
+    res.status(502).json({ error: 'Could not fetch a dog right now, try again' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Dog of the Day listening on port ${PORT}`);
-  runAutopilotIfDue();
-  setInterval(runAutopilotIfDue, 60 * 60 * 1000);
+  scheduleMidnightAutopilot();
 });
