@@ -79,8 +79,9 @@
       .then((data) => {
         if (!data || !data.url) return;
         const content = document.getElementById('content');
+        const imgSrc = data.url.startsWith('http') ? data.url : `${API_BASE}${data.url}`;
         content.innerHTML = `
-          <img id="photo" src="${API_BASE}${data.url}" alt="${data.name || 'Dog of the day'}">
+          <img id="photo" src="${imgSrc}" alt="${data.name || 'Dog of the day'}">
           ${data.name ? `<div id="name">${data.name}</div>` : ''}
           ${data.caption ? `<div id="caption">${data.caption}</div>` : ''}
           <div id="updated">Updated ${new Date(data.updatedAt).toLocaleString()}</div>
