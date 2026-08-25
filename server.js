@@ -71,9 +71,15 @@ app.post('/api/upload', (req, res) => {
       return res.status(400).json({ error: 'No image uploaded' });
     }
 
+    if (!req.body.name || !req.body.name.trim()) {
+      fs.unlink(req.file.path, () => {});
+      return res.status(400).json({ error: "Dog's name is required" });
+    }
+
     const previous = readCurrent();
     const entry = {
       url: `/uploads/${req.file.filename}`,
+      name: req.body.name.trim().slice(0, 80),
       caption: (req.body.caption || '').slice(0, 200),
       updatedAt: new Date().toISOString(),
     };

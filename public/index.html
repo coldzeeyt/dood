@@ -21,6 +21,7 @@
     box-sizing: border-box;
   }
   h1 { margin-bottom: 1rem; }
+  #name { margin-top: 1rem; font-size: 1.4rem; font-weight: 600; }
   #photo {
     max-width: min(90vw, 500px);
     max-height: 60vh;
@@ -41,6 +42,12 @@
   #empty svg { width: 180px; height: 180px; }
   #empty p { color: #888; margin: 1rem 0 0; }
   a { color: inherit; }
+  #admin-link {
+    margin-top: 2rem;
+    font-size: 0.85rem;
+    color: #aaa;
+    text-decoration: none;
+  }
 </style>
 </head>
 <body>
@@ -62,6 +69,7 @@
       <p>This is a placeholder — the real dog of the day will show up here once one's uploaded.</p>
     </div>
   </div>
+  <a id="admin-link" href="admin/">Upload a new dog →</a>
 
   <script src="config.js"></script>
   <script>
@@ -72,7 +80,8 @@
         if (!data || !data.url) return;
         const content = document.getElementById('content');
         content.innerHTML = `
-          <img id="photo" src="${API_BASE}${data.url}" alt="Dog of the day">
+          <img id="photo" src="${API_BASE}${data.url}" alt="${data.name || 'Dog of the day'}">
+          ${data.name ? `<div id="name">${data.name}</div>` : ''}
           ${data.caption ? `<div id="caption">${data.caption}</div>` : ''}
           <div id="updated">Updated ${new Date(data.updatedAt).toLocaleString()}</div>
         `;
