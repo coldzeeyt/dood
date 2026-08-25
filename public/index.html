@@ -39,14 +39,16 @@
     <p id="empty">No dog uploaded yet. Check back soon!</p>
   </div>
 
+  <script src="config.js"></script>
   <script>
-    fetch('/api/current')
+    const API_BASE = window.DOOD_API_BASE || '';
+    fetch(`${API_BASE}/api/current`)
       .then((r) => r.json())
       .then((data) => {
         if (!data || !data.url) return;
         const content = document.getElementById('content');
         content.innerHTML = `
-          <img id="photo" src="${data.url}" alt="Dog of the day">
+          <img id="photo" src="${API_BASE}${data.url}" alt="Dog of the day">
           ${data.caption ? `<div id="caption">${data.caption}</div>` : ''}
           <div id="updated">Updated ${new Date(data.updatedAt).toLocaleString()}</div>
         `;

@@ -50,13 +50,15 @@
   </form>
   <div id="status"></div>
 
+  <script src="config.js"></script>
   <script>
+    const API_BASE = window.DOOD_API_BASE || '';
     const form = document.getElementById('form');
     const status = document.getElementById('status');
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       status.textContent = 'Uploading...';
-      const res = await fetch('/api/upload', { method: 'POST', body: new FormData(form) });
+      const res = await fetch(`${API_BASE}/api/upload`, { method: 'POST', body: new FormData(form) });
       const data = await res.json();
       if (!res.ok) {
         status.textContent = `Error: ${data.error || 'upload failed'}`;

@@ -9,6 +9,7 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 const CURRENT_FILE = path.join(DATA_DIR, 'current.json');
+const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
@@ -46,6 +47,12 @@ const upload = multer({
 });
 
 const app = express();
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', CORS_ORIGIN);
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  next();
+});
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(UPLOADS_DIR));
 
