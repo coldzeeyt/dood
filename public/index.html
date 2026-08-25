@@ -29,14 +29,38 @@
   }
   #caption { margin-top: 1rem; font-size: 1.1rem; }
   #updated { margin-top: 0.5rem; font-size: 0.85rem; color: #888; }
-  #empty { color: #888; }
+  #empty {
+    max-width: min(90vw, 500px);
+    max-height: 60vh;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    background: #fff;
+    padding: 2rem;
+    box-sizing: border-box;
+  }
+  #empty svg { width: 180px; height: 180px; }
+  #empty p { color: #888; margin: 1rem 0 0; }
   a { color: inherit; }
 </style>
 </head>
 <body>
   <h1>🐶 Dog of the Day</h1>
   <div id="content">
-    <p id="empty">No dog uploaded yet. Check back soon!</p>
+    <div id="empty">
+      <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        <ellipse cx="60" cy="70" rx="22" ry="30" fill="#c98a4b" transform="rotate(-25 60 70)"/>
+        <ellipse cx="140" cy="70" rx="22" ry="30" fill="#c98a4b" transform="rotate(25 140 70)"/>
+        <circle cx="100" cy="105" r="65" fill="#e3a96b"/>
+        <ellipse cx="100" cy="125" rx="35" ry="28" fill="#fbe8d3"/>
+        <circle cx="75" cy="95" r="9" fill="#3a2a20"/>
+        <circle cx="125" cy="95" r="9" fill="#3a2a20"/>
+        <ellipse cx="100" cy="120" rx="10" ry="7" fill="#3a2a20"/>
+        <path d="M100 127 Q100 138 88 138" stroke="#3a2a20" stroke-width="4" fill="none" stroke-linecap="round"/>
+        <path d="M78 148 Q100 165 122 148" stroke="#3a2a20" stroke-width="4" fill="none" stroke-linecap="round"/>
+        <ellipse cx="100" cy="158" rx="12" ry="16" fill="#ef8c9e"/>
+      </svg>
+      <p>This is a placeholder — the real dog of the day will show up here once one's uploaded.</p>
+    </div>
   </div>
 
   <script src="config.js"></script>
