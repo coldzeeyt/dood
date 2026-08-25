@@ -48,6 +48,59 @@
     color: #aaa;
     text-decoration: none;
   }
+  #about-btn {
+    margin-top: 0.75rem;
+    font-size: 0.85rem;
+    color: #aaa;
+    background: none;
+    border: none;
+    text-decoration: underline;
+    cursor: pointer;
+    font-family: inherit;
+    padding: 0;
+  }
+  #about-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    box-sizing: border-box;
+    z-index: 10;
+  }
+  #about-overlay.open { display: flex; }
+  #about-modal {
+    background: #fff;
+    color: #222;
+    border-radius: 16px;
+    max-width: min(90vw, 420px);
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 1.5rem;
+    box-sizing: border-box;
+    text-align: center;
+    position: relative;
+  }
+  #about-modal h2 { margin: 0 0 1rem; }
+  #about-modal img {
+    width: 100%;
+    border-radius: 12px;
+    margin-bottom: 1rem;
+  }
+  #about-modal p { line-height: 1.5; margin: 0.5rem 0; }
+  #about-close {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.9rem;
+    background: none;
+    border: none;
+    font-size: 1.4rem;
+    cursor: pointer;
+    color: #888;
+    line-height: 1;
+  }
 </style>
 </head>
 <body>
@@ -70,9 +123,29 @@
     </div>
   </div>
   <a id="admin-link" href="admin/">Upload a new dog →</a>
+  <button id="about-btn" type="button">About the Creator</button>
+
+  <div id="about-overlay">
+    <div id="about-modal">
+      <button id="about-close" type="button" aria-label="Close">&times;</button>
+      <h2>About the Creator</h2>
+      <img src="shirley.jpg" alt="Shirley the dog">
+      <p>Hi, I'm Shirley's human! I love dogs, and I just needed a website where I could check out the good boys (and girls) of the day.</p>
+      <p>This is Shirley. 🐾</p>
+    </div>
+  </div>
 
   <script src="config.js"></script>
   <script>
+    const aboutBtn = document.getElementById('about-btn');
+    const aboutOverlay = document.getElementById('about-overlay');
+    const aboutClose = document.getElementById('about-close');
+    aboutBtn.addEventListener('click', () => aboutOverlay.classList.add('open'));
+    aboutClose.addEventListener('click', () => aboutOverlay.classList.remove('open'));
+    aboutOverlay.addEventListener('click', (e) => {
+      if (e.target === aboutOverlay) aboutOverlay.classList.remove('open');
+    });
+
     const API_BASE = window.DOOD_API_BASE || '';
     fetch(`${API_BASE}/api/current`)
       .then((r) => r.json())
