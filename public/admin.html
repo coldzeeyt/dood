@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dog of the Day - Admin</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    margin: 0;
+    background: #fafafa;
+    color: #222;
+    padding: 2rem 1rem;
+    box-sizing: border-box;
+  }
+  form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    width: min(90vw, 360px);
+  }
+  input, button {
+    padding: 0.6rem;
+    font-size: 1rem;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+  }
+  button {
+    background: #222;
+    color: white;
+    cursor: pointer;
+    border: none;
+  }
+  #status { min-height: 1.2rem; font-size: 0.9rem; }
+</style>
+</head>
+<body>
+  <h1>Upload Dog of the Day</h1>
+  <form id="form">
+    <input type="password" name="password" placeholder="Admin password" required>
+    <input type="file" name="photo" accept="image/png,image/jpeg,image/gif,image/webp" required>
+    <input type="text" name="caption" placeholder="Caption (optional)" maxlength="200">
+    <button type="submit">Upload</button>
+  </form>
+  <div id="status"></div>
+
+  <script>
+    const form = document.getElementById('form');
+    const status = document.getElementById('status');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      status.textContent = 'Uploading...';
+      const res = await fetch('/api/upload', { method: 'POST', body: new FormData(form) });
+      const data = await res.json();
+      if (!res.ok) {
+        status.textContent = `Error: ${data.error || 'upload failed'}`;
+        return;
+      }
+      status.textContent = 'Uploaded! The homepage is now updated.';
+      form.reset();
+    });
+  </script>
+</body>
+</html>

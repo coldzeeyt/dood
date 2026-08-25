@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dog of the Day</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    margin: 0;
+    background: #fafafa;
+    color: #222;
+    text-align: center;
+    padding: 2rem 1rem;
+    box-sizing: border-box;
+  }
+  h1 { margin-bottom: 1rem; }
+  #photo {
+    max-width: min(90vw, 500px);
+    max-height: 60vh;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  }
+  #caption { margin-top: 1rem; font-size: 1.1rem; }
+  #updated { margin-top: 0.5rem; font-size: 0.85rem; color: #888; }
+  #empty { color: #888; }
+  a { color: inherit; }
+</style>
+</head>
+<body>
+  <h1>🐶 Dog of the Day</h1>
+  <div id="content">
+    <p id="empty">No dog uploaded yet. Check back soon!</p>
+  </div>
+
+  <script>
+    fetch('/api/current')
+      .then((r) => r.json())
+      .then((data) => {
+        if (!data || !data.url) return;
+        const content = document.getElementById('content');
+        content.innerHTML = `
+          <img id="photo" src="${data.url}" alt="Dog of the day">
+          ${data.caption ? `<div id="caption">${data.caption}</div>` : ''}
+          <div id="updated">Updated ${new Date(data.updatedAt).toLocaleString()}</div>
+        `;
+      })
+      .catch(() => {});
+  </script>
+</body>
+</html>
