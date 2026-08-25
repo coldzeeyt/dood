@@ -2,4 +2,4 @@
 // same origin the page is served from (e.g. when testing directly against
 // the Railway URL). Set this to your Railway URL when hosting the frontend
 // on GitHub Pages, e.g. "https://dood-production.up.railway.app".
-window.DOOD_API_BASE = '';
+window.DOOD_API_BASE = 'https://dood-production.up.railway.app';
