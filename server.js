@@ -78,19 +78,13 @@ function archiveToHistory(previous) {
   writeHistory(history);
 }
 
-function formatBreed(breedPath) {
-  return breedPath.split('/').reverse().map((s) => s[0].toUpperCase() + s.slice(1)).join(' ');
-}
-
 async function fetchAutopilotDog() {
   const res = await fetch('https://dog.ceo/api/breeds/image/random');
   const data = await res.json();
-  const match = data.message.match(/\/breeds\/([^/]+(?:\/[^/]+)?)\//);
-  const breed = match ? formatBreed(match[1]) : 'Dog';
   const name = AUTOPILOT_NAMES[Math.floor(Math.random() * AUTOPILOT_NAMES.length)];
   return {
     url: data.message,
-    name: `${name} the ${breed}`,
+    name,
     caption: '',
     updatedAt: new Date().toISOString(),
     auto: true,
