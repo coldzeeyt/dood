@@ -10,9 +10,11 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 const CURRENT_FILE = path.join(DATA_DIR, 'current.json');
 const HISTORY_FILE = path.join(DATA_DIR, 'history.json');
+const QUEUE_FILE = path.join(DATA_DIR, 'queue.json');
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 const AUTOPILOT_ENABLED = process.env.AUTOPILOT_ENABLED !== 'false';
 const HISTORY_MAX_ENTRIES = Number(process.env.HISTORY_MAX_ENTRIES) || 60;
+const QUEUE_MAX_ENTRIES = Number(process.env.QUEUE_MAX_ENTRIES) || 15;
 
 const AUTOPILOT_NAMES = [
   'Buddy', 'Bella', 'Max', 'Charlie', 'Luna', 'Cooper', 'Daisy', 'Rocky',
@@ -45,6 +47,18 @@ function readHistory() {
 
 function writeHistory(list) {
   fs.writeFileSync(HISTORY_FILE, JSON.stringify(list, null, 2));
+}
+
+function readQueue() {
+  try {
+    return JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf8'));
+  } catch {
+    return [];
+  }
+}
+
+function writeQueue(list) {
+  fs.writeFileSync(QUEUE_FILE, JSON.stringify(list, null, 2));
 }
 
 function deleteUploadFile(entry) {
@@ -83,16 +97,27 @@ async function fetchAutopilotDog() {
   };
 }
 
-async function runAutopilot() {
+// Advances to the next dog: a queued request takes priority, and only once
+// the queue is empty does this fall back to fetching a random dog.
+async function advanceDog() {
   try {
     const previous = readCurrent();
-    const entry = await fetchAutopilotDog();
+    const queue = readQueue();
+    let entry;
+    if (queue.length > 0) {
+      const next = queue.shift();
+      writeQueue(queue);
+      entry = { url: next.url, name: next.name, caption: next.caption || '', updatedAt: new Date().toISOString() };
+      console.log(`Next dog from queue: ${entry.name}`);
+    } else {
+      entry = await fetchAutopilotDog();
+      console.log(`Autopilot picked ${entry.name}`);
+    }
     writeCurrent(entry);
     archiveToHistory(previous);
-    console.log(`Autopilot picked ${entry.name}`);
     return entry;
   } catch (err) {
-    console.error('Autopilot fetch failed:', err.message);
+    console.error('Advancing to next dog failed:', err.message);
     throw err;
   }
 }
@@ -112,13 +137,13 @@ function scheduleMidnightAutopilot() {
     const current = readCurrent();
     const now = new Date();
     if (!current) {
-      runAutopilot();
+      advanceDog();
       return;
     }
     const updated = new Date(current.updatedAt);
     if (isSameLocalDay(updated, now)) return;
     if (now.getHours() === 0 && now.getMinutes() < 5) {
-      runAutopilot();
+      advanceDog();
     }
   };
 
@@ -200,11 +225,40 @@ app.post('/api/autopilot', multer().none(), async (req, res) => {
     return res.status(401).json({ error: 'Wrong password' });
   }
   try {
-    const entry = await runAutopilot();
+    const entry = await advanceDog();
     res.json(entry);
   } catch {
     res.status(502).json({ error: 'Could not fetch a dog right now, try again' });
   }
+});
+
+app.post('/api/request', (req, res) => {
+  upload.single('photo')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message });
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image uploaded' });
+    }
+    if (!req.body.name || !req.body.name.trim()) {
+      fs.unlink(req.file.path, () => {});
+      return res.status(400).json({ error: "Dog's name is required" });
+    }
+
+    const queue = readQueue();
+    if (queue.length >= QUEUE_MAX_ENTRIES) {
+      fs.unlink(req.file.path, () => {});
+      return res.status(429).json({ error: 'The queue is full right now, try again later' });
+    }
+
+    queue.push({
+      url: `/uploads/${req.file.filename}`,
+      name: req.body.name.trim().slice(0, 80),
+      caption: (req.body.caption || '').slice(0, 200),
+      submittedAt: new Date().toISOString(),
+    });
+    writeQueue(queue);
+
+    res.json({ position: queue.length });
+  });
 });
 
 app.listen(PORT, () => {

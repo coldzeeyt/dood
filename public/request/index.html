@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Request a Dog - Dog of the Day</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    margin: 0;
+    background: #fafafa;
+    color: #222;
+    padding: 2rem 1rem;
+    box-sizing: border-box;
+    text-align: center;
+  }
+  p.hint { color: #888; font-size: 0.9rem; max-width: min(90vw, 360px); margin: 0 0 1.5rem; }
+  form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    width: min(90vw, 360px);
+  }
+  input, button {
+    padding: 0.6rem;
+    font-size: 1rem;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+  }
+  button {
+    background: #222;
+    color: white;
+    cursor: pointer;
+    border: none;
+  }
+  #status { min-height: 1.2rem; font-size: 0.9rem; margin-top: 0.5rem; }
+  #back-link { margin-top: 2rem; font-size: 0.85rem; color: #aaa; text-decoration: none; }
+</style>
+</head>
+<body>
+  <h1>🐕 Request a Dog</h1>
+  <p class="hint">Submit a good dog to be featured as a future Dog of the Day! No password needed — it'll be added to the queue and shown once it's its turn.</p>
+  <form id="form">
+    <input type="file" name="photo" accept="image/png,image/jpeg,image/gif,image/webp" required>
+    <input type="text" name="name" placeholder="Dog's name" maxlength="80" required>
+    <input type="text" name="caption" placeholder="Caption (optional)" maxlength="200">
+    <button type="submit">Submit</button>
+  </form>
+  <div id="status"></div>
+  <a id="back-link" href="../">← Back to today's dog</a>
+
+  <script src="../config.js"></script>
+  <script>
+    const API_BASE = window.DOOD_API_BASE || '';
+    const form = document.getElementById('form');
+    const status = document.getElementById('status');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      status.textContent = 'Submitting...';
+      const res = await fetch(`${API_BASE}/api/request`, { method: 'POST', body: new FormData(form) });
+      const data = await res.json();
+      if (!res.ok) {
+        status.textContent = `Error: ${data.error || 'submission failed'}`;
+        return;
+      }
+      status.textContent = `Thanks! Your dog is #${data.position} in the queue.`;
+      form.reset();
+    });
+  </script>
+</body>
+</html>
