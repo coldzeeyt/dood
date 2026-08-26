@@ -9,8 +9,10 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 const CURRENT_FILE = path.join(DATA_DIR, 'current.json');
+const HISTORY_FILE = path.join(DATA_DIR, 'history.json');
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 const AUTOPILOT_ENABLED = process.env.AUTOPILOT_ENABLED !== 'false';
+const HISTORY_MAX_ENTRIES = Number(process.env.HISTORY_MAX_ENTRIES) || 60;
 
 const AUTOPILOT_NAMES = [
   'Buddy', 'Bella', 'Max', 'Charlie', 'Luna', 'Cooper', 'Daisy', 'Rocky',
@@ -33,9 +35,33 @@ function writeCurrent(entry) {
   fs.writeFileSync(CURRENT_FILE, JSON.stringify(entry, null, 2));
 }
 
-function deletePreviousUpload(previous) {
-  if (!previous || !previous.url || !previous.url.startsWith('/uploads/')) return;
-  fs.unlink(path.join(DATA_DIR, previous.url.slice(1)), () => {});
+function readHistory() {
+  try {
+    return JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
+  } catch {
+    return [];
+  }
+}
+
+function writeHistory(list) {
+  fs.writeFileSync(HISTORY_FILE, JSON.stringify(list, null, 2));
+}
+
+function deleteUploadFile(entry) {
+  if (!entry || !entry.url || !entry.url.startsWith('/uploads/')) return;
+  fs.unlink(path.join(DATA_DIR, entry.url.slice(1)), () => {});
+}
+
+// Moves the outgoing "current" dog into the history list instead of
+// deleting its photo, so past dogs stay viewable. Oldest entries past the
+// cap are dropped and their local files cleaned up.
+function archiveToHistory(previous) {
+  if (!previous) return;
+  const history = readHistory();
+  history.unshift(previous);
+  const overflow = history.splice(HISTORY_MAX_ENTRIES);
+  overflow.forEach(deleteUploadFile);
+  writeHistory(history);
 }
 
 function formatBreed(breedPath) {
@@ -62,7 +88,7 @@ async function runAutopilot() {
     const previous = readCurrent();
     const entry = await fetchAutopilotDog();
     writeCurrent(entry);
-    deletePreviousUpload(previous);
+    archiveToHistory(previous);
     console.log(`Autopilot picked ${entry.name}`);
     return entry;
   } catch (err) {
@@ -135,6 +161,10 @@ app.get('/api/current', (req, res) => {
   res.json(readCurrent());
 });
 
+app.get('/api/history', (req, res) => {
+  res.json(readHistory());
+});
+
 app.post('/api/upload', (req, res) => {
   upload.single('photo')(req, res, (err) => {
     if (err) return res.status(400).json({ error: err.message });
@@ -159,7 +189,7 @@ app.post('/api/upload', (req, res) => {
       updatedAt: new Date().toISOString(),
     };
     writeCurrent(entry);
-    deletePreviousUpload(previous);
+    archiveToHistory(previous);
 
     res.json(entry);
   });

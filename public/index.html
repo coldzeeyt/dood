@@ -42,12 +42,13 @@
   #empty svg { width: 180px; height: 180px; }
   #empty p { color: #888; margin: 1rem 0 0; }
   a { color: inherit; }
-  #admin-link {
-    margin-top: 2rem;
+  .footer-link {
+    margin-top: 1rem;
     font-size: 0.85rem;
     color: #aaa;
     text-decoration: none;
   }
+  .footer-link:first-of-type { margin-top: 2rem; }
   #about-btn {
     margin-top: 0.75rem;
     font-size: 0.85rem;
@@ -122,7 +123,8 @@
       <p>This is a placeholder — the real dog of the day will show up here once one's uploaded.</p>
     </div>
   </div>
-  <a id="admin-link" href="admin/">Upload a new dog →</a>
+  <a class="footer-link" href="admin/">Upload a new dog →</a>
+  <a class="footer-link" href="history/">Past dogs →</a>
   <button id="about-btn" type="button">About the Creator</button>
 
   <div id="about-overlay">
