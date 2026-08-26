@@ -14,7 +14,6 @@ const QUEUE_FILE = path.join(DATA_DIR, 'queue.json');
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 const AUTOPILOT_ENABLED = process.env.AUTOPILOT_ENABLED !== 'false';
 const HISTORY_MAX_ENTRIES = Number(process.env.HISTORY_MAX_ENTRIES) || 60;
-const QUEUE_MAX_ENTRIES = Number(process.env.QUEUE_MAX_ENTRIES) || 15;
 
 const AUTOPILOT_NAMES = [
   'Buddy', 'Bella', 'Max', 'Charlie', 'Luna', 'Cooper', 'Daisy', 'Rocky',
@@ -244,11 +243,6 @@ app.post('/api/request', (req, res) => {
     }
 
     const queue = readQueue();
-    if (queue.length >= QUEUE_MAX_ENTRIES) {
-      fs.unlink(req.file.path, () => {});
-      return res.status(429).json({ error: 'The queue is full right now, try again later' });
-    }
-
     queue.push({
       url: `/uploads/${req.file.filename}`,
       name: req.body.name.trim().slice(0, 80),
