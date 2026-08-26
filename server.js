@@ -11,6 +11,7 @@ const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 const CURRENT_FILE = path.join(DATA_DIR, 'current.json');
 const HISTORY_FILE = path.join(DATA_DIR, 'history.json');
 const QUEUE_FILE = path.join(DATA_DIR, 'queue.json');
+const PASSWORD_FILE = path.join(DATA_DIR, 'admin-password.json');
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 const AUTOPILOT_ENABLED = process.env.AUTOPILOT_ENABLED !== 'false';
 const HISTORY_MAX_ENTRIES = Number(process.env.HISTORY_MAX_ENTRIES) || 60;
@@ -96,15 +97,17 @@ async function fetchAutopilotDog() {
   };
 }
 
-// Advances to the next dog: a queued request takes priority, and only once
-// the queue is empty does this fall back to fetching a random dog.
+// Advances to the next dog: the oldest *approved* queued request takes
+// priority, and only once there are none does this fall back to fetching a
+// random dog. Pending (not yet moderated) submissions are skipped.
 async function advanceDog() {
   try {
     const previous = readCurrent();
     const queue = readQueue();
+    const idx = queue.findIndex((item) => item.status === 'approved');
     let entry;
-    if (queue.length > 0) {
-      const next = queue.shift();
+    if (idx !== -1) {
+      const [next] = queue.splice(idx, 1);
       writeQueue(queue);
       entry = { url: next.url, name: next.name, caption: next.caption || '', updatedAt: new Date().toISOString() };
       console.log(`Next dog from queue: ${entry.name}`);
@@ -150,8 +153,34 @@ function scheduleMidnightAutopilot() {
   setInterval(checkAndRun, 60 * 1000);
 }
 
+function hashPassword(password, salt) {
+  return crypto.scryptSync(password, salt, 64).toString('hex');
+}
+
+function readStoredPassword() {
+  try {
+    return JSON.parse(fs.readFileSync(PASSWORD_FILE, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  fs.writeFileSync(PASSWORD_FILE, JSON.stringify({ salt, hash: hashPassword(password, salt) }));
+}
+
+// Checks against a changed password stored on disk if one has been set via
+// /api/change-password, otherwise falls back to the ADMIN_PASSWORD env var.
 function passwordMatches(candidate) {
-  if (!ADMIN_PASSWORD || !candidate) return false;
+  if (!candidate) return false;
+  const stored = readStoredPassword();
+  if (stored) {
+    const a = Buffer.from(hashPassword(candidate, stored.salt), 'hex');
+    const b = Buffer.from(stored.hash, 'hex');
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  }
+  if (!ADMIN_PASSWORD) return false;
   const a = Buffer.from(candidate);
   const b = Buffer.from(ADMIN_PASSWORD);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
@@ -244,15 +273,60 @@ app.post('/api/request', (req, res) => {
 
     const queue = readQueue();
     queue.push({
+      id: crypto.randomUUID(),
       url: `/uploads/${req.file.filename}`,
       name: req.body.name.trim().slice(0, 80),
       caption: (req.body.caption || '').slice(0, 200),
       submittedAt: new Date().toISOString(),
+      status: 'pending',
     });
     writeQueue(queue);
 
     res.json({ position: queue.length });
   });
+});
+
+app.post('/api/queue/list', multer().none(), (req, res) => {
+  if (!passwordMatches(req.body.password)) {
+    return res.status(401).json({ error: 'Wrong password' });
+  }
+  res.json(readQueue());
+});
+
+app.post('/api/queue/accept', multer().none(), (req, res) => {
+  if (!passwordMatches(req.body.password)) {
+    return res.status(401).json({ error: 'Wrong password' });
+  }
+  const queue = readQueue();
+  const item = queue.find((q) => q.id === req.body.id);
+  if (!item) return res.status(404).json({ error: 'Not found' });
+  item.status = 'approved';
+  writeQueue(queue);
+  res.json({ success: true });
+});
+
+app.post('/api/queue/deny', multer().none(), (req, res) => {
+  if (!passwordMatches(req.body.password)) {
+    return res.status(401).json({ error: 'Wrong password' });
+  }
+  const queue = readQueue();
+  const idx = queue.findIndex((q) => q.id === req.body.id);
+  if (idx === -1) return res.status(404).json({ error: 'Not found' });
+  const [removed] = queue.splice(idx, 1);
+  deleteUploadFile(removed);
+  writeQueue(queue);
+  res.json({ success: true });
+});
+
+app.post('/api/change-password', multer().none(), (req, res) => {
+  if (!passwordMatches(req.body.currentPassword)) {
+    return res.status(401).json({ error: 'Current password is incorrect' });
+  }
+  if (!req.body.newPassword || req.body.newPassword.length < 4) {
+    return res.status(400).json({ error: 'New password must be at least 4 characters' });
+  }
+  writeStoredPassword(req.body.newPassword);
+  res.json({ success: true });
 });
 
 app.listen(PORT, () => {

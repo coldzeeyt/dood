@@ -46,6 +46,14 @@
   }
   #autopilot-form button { background: #567; }
   p.hint { color: #888; font-size: 0.85rem; width: min(90vw, 360px); margin: 0.5rem 0 0; }
+  #queue-link {
+    display: inline-block;
+    margin-top: 0.5rem;
+    color: #567;
+    font-size: 0.95rem;
+    text-decoration: none;
+  }
+  #password-form button { background: #a55; }
 </style>
 </head>
 <body>
@@ -67,6 +75,18 @@
   </form>
   <p class="hint">Fetches a random dog photo and name automatically instead of uploading your own.</p>
   <div id="autopilot-status"></div>
+  <a id="queue-link" href="queue/">📋 Review submitted dogs →</a>
+
+  <hr>
+
+  <form id="password-form">
+    <input type="password" name="currentPassword" placeholder="Current password" required>
+    <input type="password" name="newPassword" placeholder="New password" minlength="4" required>
+    <input type="password" name="confirmPassword" placeholder="Confirm new password" minlength="4" required>
+    <button type="submit">Change password</button>
+  </form>
+  <p class="hint">Note: without persistent storage set up on Railway, a changed password reverts to the original on the next restart.</p>
+  <div id="password-status"></div>
 
   <script src="../config.js"></script>
   <script>
@@ -111,6 +131,34 @@
         autopilotStatus.textContent = err.name === 'TimeoutError' || err.name === 'AbortError'
           ? 'Request timed out — check your connection and try again.'
           : 'Request failed — check your connection and try again.';
+      }
+    });
+
+    const passwordForm = document.getElementById('password-form');
+    const passwordStatus = document.getElementById('password-status');
+    passwordForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const newPassword = passwordForm.newPassword.value;
+      const confirmPassword = passwordForm.confirmPassword.value;
+      if (newPassword !== confirmPassword) {
+        passwordStatus.textContent = "New password and confirmation don't match.";
+        return;
+      }
+      passwordStatus.textContent = 'Changing password...';
+      try {
+        const body = new FormData();
+        body.set('currentPassword', passwordForm.currentPassword.value);
+        body.set('newPassword', newPassword);
+        const res = await fetch(`${API_BASE}/api/change-password`, { method: 'POST', body, signal: AbortSignal.timeout(30000) });
+        const data = await res.json();
+        if (!res.ok) {
+          passwordStatus.textContent = `Error: ${data.error || 'failed'}`;
+          return;
+        }
+        passwordStatus.textContent = 'Password changed. Use the new one from now on.';
+        passwordForm.reset();
+      } catch (err) {
+        passwordStatus.textContent = 'Request failed — check your connection and try again.';
       }
     });
   </script>

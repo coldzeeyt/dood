@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Review Queue - Dog of the Day</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: system-ui, sans-serif;
+    margin: 0;
+    background: #fafafa;
+    color: #222;
+    padding: 2rem 1rem 3rem;
+    box-sizing: border-box;
+  }
+  h1 { text-align: center; margin: 0 0 1.5rem; }
+  #back-link { display: block; text-align: center; color: #aaa; font-size: 0.9rem; margin-bottom: 1.5rem; }
+  #login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    width: min(90vw, 320px);
+    margin: 0 auto;
+  }
+  input, button {
+    padding: 0.6rem;
+    font-size: 1rem;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+  }
+  button {
+    background: #222;
+    color: white;
+    cursor: pointer;
+    border: none;
+  }
+  #login-status { text-align: center; min-height: 1.2rem; font-size: 0.9rem; margin-top: 0.5rem; }
+  #grid {
+    display: none;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 1.25rem;
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+  .card {
+    background: #fff;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  }
+  .card img { width: 100%; height: 200px; object-fit: cover; display: block; }
+  .card-body { padding: 0.75rem 1rem 1rem; }
+  .card-name { font-weight: 600; font-size: 1.05rem; }
+  .card-caption { color: #555; font-size: 0.9rem; margin-top: 0.25rem; }
+  .card-date { color: #999; font-size: 0.75rem; margin: 0.4rem 0 0.75rem; }
+  .badge {
+    display: inline-block;
+    font-size: 0.75rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    margin-bottom: 0.5rem;
+  }
+  .badge.pending { background: #fef3c7; color: #92400e; }
+  .badge.approved { background: #d1fae5; color: #065f46; }
+  .card-actions { display: flex; gap: 0.5rem; }
+  .card-actions button { flex: 1; padding: 0.5rem; font-size: 0.9rem; }
+  .accept-btn { background: #2a7; }
+  .deny-btn { background: #a55; }
+  #empty { display: none; text-align: center; color: #888; margin-top: 2rem; }
+</style>
+</head>
+<body>
+  <h1>📋 Review Submitted Dogs</h1>
+  <a id="back-link" href="../">← Back to admin</a>
+
+  <form id="login-form">
+    <input type="password" name="password" placeholder="Admin password" required>
+    <button type="submit">Load queue</button>
+  </form>
+  <div id="login-status"></div>
+
+  <div id="grid"></div>
+  <p id="empty">Nothing in the queue right now.</p>
+
+  <script src="../../config.js"></script>
+  <script>
+    const API_BASE = window.DOOD_API_BASE || '';
+    let password = '';
+
+    const loginForm = document.getElementById('login-form');
+    const loginStatus = document.getElementById('login-status');
+    const grid = document.getElementById('grid');
+    const empty = document.getElementById('empty');
+
+    function imgSrc(url) {
+      return url.startsWith('http') ? url : `${API_BASE}${url}`;
+    }
+
+    function render(queue) {
+      if (!queue.length) {
+        grid.style.display = 'none';
+        empty.style.display = 'block';
+        return;
+      }
+      empty.style.display = 'none';
+      grid.style.display = 'grid';
+      grid.innerHTML = queue.map((item) => `
+        <div class="card" data-id="${item.id}">
+          <img src="${imgSrc(item.url)}" alt="${item.name}">
+          <div class="card-body">
+            <span class="badge ${item.status}">${item.status}</span>
+            <div class="card-name">${item.name}</div>
+            ${item.caption ? `<div class="card-caption">${item.caption}</div>` : ''}
+            <div class="card-date">${new Date(item.submittedAt).toLocaleString()}</div>
+            <div class="card-actions">
+              ${item.status === 'pending' ? `<button class="accept-btn" data-action="accept" data-id="${item.id}">Accept</button>` : ''}
+              <button class="deny-btn" data-action="deny" data-id="${item.id}">Deny / Remove</button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function loadQueue() {
+      const body = new FormData();
+      body.set('password', password);
+      const res = await fetch(`${API_BASE}/api/queue/list`, { method: 'POST', body, signal: AbortSignal.timeout(30000) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load queue');
+      render(data);
+    }
+
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      password = loginForm.password.value;
+      loginStatus.textContent = 'Loading...';
+      try {
+        await loadQueue();
+        loginStatus.textContent = '';
+      } catch (err) {
+        loginStatus.textContent = err.message === 'Wrong password' ? 'Wrong password' : 'Failed to load — check your connection.';
+      }
+    });
+
+    grid.addEventListener('click', async (e) => {
+      const btn = e.target.closest('button[data-action]');
+      if (!btn) return;
+      btn.disabled = true;
+      const body = new FormData();
+      body.set('password', password);
+      body.set('id', btn.dataset.id);
+      try {
+        const res = await fetch(`${API_BASE}/api/queue/${btn.dataset.action}`, { method: 'POST', body, signal: AbortSignal.timeout(30000) });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'failed');
+        await loadQueue();
+      } catch (err) {
+        btn.disabled = false;
+        loginStatus.textContent = `Error: ${err.message}`;
+      }
+    });
+  </script>
+</body>
+</html>
