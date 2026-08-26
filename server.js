@@ -1,17 +1,11 @@
-const fs = require('fs');
-const path = require('path');
 const crypto = require('crypto');
+const path = require('path');
 const express = require('express');
 const multer = require('multer');
+const { Pool } = require('pg');
 
 const PORT = process.env.PORT || 3000;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
-const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
-const CURRENT_FILE = path.join(DATA_DIR, 'current.json');
-const HISTORY_FILE = path.join(DATA_DIR, 'history.json');
-const QUEUE_FILE = path.join(DATA_DIR, 'queue.json');
-const PASSWORD_FILE = path.join(DATA_DIR, 'admin-password.json');
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 const AUTOPILOT_ENABLED = process.env.AUTOPILOT_ENABLED !== 'false';
 const HISTORY_MAX_ENTRIES = Number(process.env.HISTORY_MAX_ENTRIES) || 60;
@@ -23,59 +17,100 @@ const AUTOPILOT_NAMES = [
   'Otis', 'Nala', 'Baxter', 'Willow', 'Finn', 'Peanut',
 ];
 
-fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL && !process.env.DATABASE_URL.includes('localhost')
+    ? { rejectUnauthorized: false }
+    : false,
+});
 
-function readCurrent() {
-  try {
-    return JSON.parse(fs.readFileSync(CURRENT_FILE, 'utf8'));
-  } catch {
-    return null;
-  }
+async function initDb() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS app_state (
+      key TEXT PRIMARY KEY,
+      value JSONB NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS photos (
+      id UUID PRIMARY KEY,
+      mime_type TEXT NOT NULL,
+      data BYTEA NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS history (
+      id BIGSERIAL PRIMARY KEY,
+      url TEXT NOT NULL,
+      name TEXT NOT NULL,
+      caption TEXT NOT NULL DEFAULT '',
+      updated_at TIMESTAMPTZ NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS queue (
+      id UUID PRIMARY KEY,
+      url TEXT NOT NULL,
+      name TEXT NOT NULL,
+      caption TEXT NOT NULL DEFAULT '',
+      submitted_at TIMESTAMPTZ NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending'
+    );
+  `);
 }
 
-function writeCurrent(entry) {
-  fs.writeFileSync(CURRENT_FILE, JSON.stringify(entry, null, 2));
+async function getState(key) {
+  const { rows } = await pool.query('SELECT value FROM app_state WHERE key = $1', [key]);
+  return rows[0] ? rows[0].value : null;
 }
 
-function readHistory() {
-  try {
-    return JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
-  } catch {
-    return [];
-  }
+async function setState(key, value) {
+  await pool.query(
+    'INSERT INTO app_state (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2',
+    [key, value]
+  );
 }
 
-function writeHistory(list) {
-  fs.writeFileSync(HISTORY_FILE, JSON.stringify(list, null, 2));
+const readCurrent = () => getState('current');
+const writeCurrent = (entry) => setState('current', entry);
+
+async function readHistory() {
+  const { rows } = await pool.query(
+    'SELECT url, name, caption, updated_at AS "updatedAt" FROM history ORDER BY updated_at DESC LIMIT $1',
+    [HISTORY_MAX_ENTRIES]
+  );
+  return rows;
 }
 
-function readQueue() {
-  try {
-    return JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf8'));
-  } catch {
-    return [];
-  }
+async function savePhoto(buffer, mimeType) {
+  const id = crypto.randomUUID();
+  await pool.query('INSERT INTO photos (id, mime_type, data) VALUES ($1, $2, $3)', [id, mimeType, buffer]);
+  return `/photos/${id}`;
 }
 
-function writeQueue(list) {
-  fs.writeFileSync(QUEUE_FILE, JSON.stringify(list, null, 2));
+async function deletePhotoFromUrl(url) {
+  if (!url || !url.startsWith('/photos/')) return;
+  await pool.query('DELETE FROM photos WHERE id = $1', [url.slice('/photos/'.length)]);
 }
 
-function deleteUploadFile(entry) {
-  if (!entry || !entry.url || !entry.url.startsWith('/uploads/')) return;
-  fs.unlink(path.join(DATA_DIR, entry.url.slice(1)), () => {});
-}
-
-// Moves the outgoing "current" dog into the history list instead of
+// Moves the outgoing "current" dog into the history table instead of
 // deleting its photo, so past dogs stay viewable. Oldest entries past the
-// cap are dropped and their local files cleaned up.
-function archiveToHistory(previous) {
+// cap are dropped and their photos cleaned up.
+async function archiveToHistory(previous) {
   if (!previous) return;
-  const history = readHistory();
-  history.unshift(previous);
-  const overflow = history.splice(HISTORY_MAX_ENTRIES);
-  overflow.forEach(deleteUploadFile);
-  writeHistory(history);
+  await pool.query(
+    'INSERT INTO history (url, name, caption, updated_at) VALUES ($1, $2, $3, $4)',
+    [previous.url, previous.name, previous.caption || '', previous.updatedAt]
+  );
+  const { rows: overflow } = await pool.query(
+    `DELETE FROM history WHERE id IN (
+       SELECT id FROM history ORDER BY updated_at DESC OFFSET $1
+     ) RETURNING url`,
+    [HISTORY_MAX_ENTRIES]
+  );
+  await Promise.all(overflow.map((row) => deletePhotoFromUrl(row.url)));
+}
+
+async function readQueue() {
+  const { rows } = await pool.query(
+    'SELECT id, url, name, caption, submitted_at AS "submittedAt", status FROM queue ORDER BY submitted_at ASC'
+  );
+  return rows;
 }
 
 async function fetchAutopilotDog() {
@@ -96,21 +131,22 @@ async function fetchAutopilotDog() {
 // random dog. Pending (not yet moderated) submissions are skipped.
 async function advanceDog() {
   try {
-    const previous = readCurrent();
-    const queue = readQueue();
-    const idx = queue.findIndex((item) => item.status === 'approved');
+    const previous = await readCurrent();
+    const { rows } = await pool.query(
+      "SELECT * FROM queue WHERE status = 'approved' ORDER BY submitted_at ASC LIMIT 1"
+    );
+    const approved = rows[0];
     let entry;
-    if (idx !== -1) {
-      const [next] = queue.splice(idx, 1);
-      writeQueue(queue);
-      entry = { url: next.url, name: next.name, caption: next.caption || '', updatedAt: new Date().toISOString() };
+    if (approved) {
+      await pool.query('DELETE FROM queue WHERE id = $1', [approved.id]);
+      entry = { url: approved.url, name: approved.name, caption: approved.caption || '', updatedAt: new Date().toISOString() };
       console.log(`Next dog from queue: ${entry.name}`);
     } else {
       entry = await fetchAutopilotDog();
       console.log(`Autopilot picked ${entry.name}`);
     }
-    writeCurrent(entry);
-    archiveToHistory(previous);
+    await writeCurrent(entry);
+    await archiveToHistory(previous);
     return entry;
   } catch (err) {
     console.error('Advancing to next dog failed:', err.message);
@@ -129,17 +165,17 @@ function isSameLocalDay(a, b) {
 function scheduleMidnightAutopilot() {
   if (!AUTOPILOT_ENABLED) return;
 
-  const checkAndRun = () => {
-    const current = readCurrent();
+  const checkAndRun = async () => {
+    const current = await readCurrent();
     const now = new Date();
     if (!current) {
-      advanceDog();
+      await advanceDog();
       return;
     }
     const updated = new Date(current.updatedAt);
     if (isSameLocalDay(updated, now)) return;
     if (now.getHours() === 0 && now.getMinutes() < 5) {
-      advanceDog();
+      await advanceDog();
     }
   };
 
@@ -151,24 +187,18 @@ function hashPassword(password, salt) {
   return crypto.scryptSync(password, salt, 64).toString('hex');
 }
 
-function readStoredPassword() {
-  try {
-    return JSON.parse(fs.readFileSync(PASSWORD_FILE, 'utf8'));
-  } catch {
-    return null;
-  }
-}
+const readStoredPassword = () => getState('password');
 
-function writeStoredPassword(password) {
+async function writeStoredPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
-  fs.writeFileSync(PASSWORD_FILE, JSON.stringify({ salt, hash: hashPassword(password, salt) }));
+  await setState('password', { salt, hash: hashPassword(password, salt) });
 }
 
-// Checks against a changed password stored on disk if one has been set via
-// /api/change-password, otherwise falls back to the ADMIN_PASSWORD env var.
-function passwordMatches(candidate) {
+// Checks against a changed password stored in the database if one has been
+// set via /api/change-password, otherwise falls back to ADMIN_PASSWORD.
+async function passwordMatches(candidate) {
   if (!candidate) return false;
-  const stored = readStoredPassword();
+  const stored = await readStoredPassword();
   if (stored) {
     const a = Buffer.from(hashPassword(candidate, stored.salt), 'hex');
     const b = Buffer.from(stored.hash, 'hex');
@@ -181,18 +211,14 @@ function passwordMatches(candidate) {
 }
 
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => cb(null, UPLOADS_DIR),
-    filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname).toLowerCase();
-      cb(null, `${Date.now()}${ext}`);
-    },
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     cb(null, /^image\/(jpeg|png|gif|webp)$/.test(file.mimetype));
   },
 });
+
+const asyncHandler = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 
 const app = express();
 app.use((req, res, next) => {
@@ -209,48 +235,57 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.static(path.join(__dirname, 'public')));
-app.use('/uploads', express.static(UPLOADS_DIR));
 
-app.get('/api/current', (req, res) => {
-  res.json(readCurrent());
-});
+app.get('/photos/:id', asyncHandler(async (req, res) => {
+  const { rows } = await pool.query('SELECT mime_type, data FROM photos WHERE id = $1', [req.params.id]);
+  if (!rows.length) return res.sendStatus(404);
+  res.set('Content-Type', rows[0].mime_type);
+  res.set('Cache-Control', 'public, max-age=31536000, immutable');
+  res.send(rows[0].data);
+}));
 
-app.get('/api/history', (req, res) => {
-  res.json(readHistory());
-});
+app.get('/api/current', asyncHandler(async (req, res) => {
+  res.json(await readCurrent());
+}));
 
-app.post('/api/upload', (req, res) => {
-  upload.single('photo')(req, res, (err) => {
-    if (err) return res.status(400).json({ error: err.message });
-    if (!passwordMatches(req.body.password)) {
-      if (req.file) fs.unlink(req.file.path, () => {});
-      return res.status(401).json({ error: 'Wrong password' });
+app.get('/api/history', asyncHandler(async (req, res) => {
+  res.json(await readHistory());
+}));
+
+app.post('/api/upload', (req, res, next) => {
+  upload.single('photo')(req, res, async (err) => {
+    try {
+      if (err) return res.status(400).json({ error: err.message });
+      if (!(await passwordMatches(req.body.password))) {
+        return res.status(401).json({ error: 'Wrong password' });
+      }
+      if (!req.file) {
+        return res.status(400).json({ error: 'No image uploaded' });
+      }
+      if (!req.body.name || !req.body.name.trim()) {
+        return res.status(400).json({ error: "Dog's name is required" });
+      }
+
+      const url = await savePhoto(req.file.buffer, req.file.mimetype);
+      const previous = await readCurrent();
+      const entry = {
+        url,
+        name: req.body.name.trim().slice(0, 80),
+        caption: (req.body.caption || '').slice(0, 200),
+        updatedAt: new Date().toISOString(),
+      };
+      await writeCurrent(entry);
+      await archiveToHistory(previous);
+
+      res.json(entry);
+    } catch (e) {
+      next(e);
     }
-    if (!req.file) {
-      return res.status(400).json({ error: 'No image uploaded' });
-    }
-
-    if (!req.body.name || !req.body.name.trim()) {
-      fs.unlink(req.file.path, () => {});
-      return res.status(400).json({ error: "Dog's name is required" });
-    }
-
-    const previous = readCurrent();
-    const entry = {
-      url: `/uploads/${req.file.filename}`,
-      name: req.body.name.trim().slice(0, 80),
-      caption: (req.body.caption || '').slice(0, 200),
-      updatedAt: new Date().toISOString(),
-    };
-    writeCurrent(entry);
-    archiveToHistory(previous);
-
-    res.json(entry);
   });
 });
 
-app.post('/api/autopilot', multer().none(), async (req, res) => {
-  if (!passwordMatches(req.body.password)) {
+app.post('/api/autopilot', multer().none(), asyncHandler(async (req, res) => {
+  if (!(await passwordMatches(req.body.password))) {
     return res.status(401).json({ error: 'Wrong password' });
   }
   try {
@@ -259,76 +294,69 @@ app.post('/api/autopilot', multer().none(), async (req, res) => {
   } catch {
     res.status(502).json({ error: 'Could not fetch a dog right now, try again' });
   }
-});
+}));
 
-app.post('/api/request', (req, res) => {
-  upload.single('photo')(req, res, (err) => {
-    if (err) return res.status(400).json({ error: err.message });
-    if (!req.file) {
-      return res.status(400).json({ error: 'No image uploaded' });
+app.post('/api/request', (req, res, next) => {
+  upload.single('photo')(req, res, async (err) => {
+    try {
+      if (err) return res.status(400).json({ error: err.message });
+      if (!req.file) {
+        return res.status(400).json({ error: 'No image uploaded' });
+      }
+      if (!req.body.name || !req.body.name.trim()) {
+        return res.status(400).json({ error: "Dog's name is required" });
+      }
+
+      const url = await savePhoto(req.file.buffer, req.file.mimetype);
+      await pool.query(
+        'INSERT INTO queue (id, url, name, caption, submitted_at, status) VALUES ($1, $2, $3, $4, $5, $6)',
+        [crypto.randomUUID(), url, req.body.name.trim().slice(0, 80), (req.body.caption || '').slice(0, 200), new Date().toISOString(), 'pending']
+      );
+      const { rows: countRows } = await pool.query('SELECT COUNT(*) FROM queue');
+
+      res.json({ position: Number(countRows[0].count) });
+    } catch (e) {
+      next(e);
     }
-    if (!req.body.name || !req.body.name.trim()) {
-      fs.unlink(req.file.path, () => {});
-      return res.status(400).json({ error: "Dog's name is required" });
-    }
-
-    const queue = readQueue();
-    queue.push({
-      id: crypto.randomUUID(),
-      url: `/uploads/${req.file.filename}`,
-      name: req.body.name.trim().slice(0, 80),
-      caption: (req.body.caption || '').slice(0, 200),
-      submittedAt: new Date().toISOString(),
-      status: 'pending',
-    });
-    writeQueue(queue);
-
-    res.json({ position: queue.length });
   });
 });
 
-app.post('/api/queue/list', multer().none(), (req, res) => {
-  if (!passwordMatches(req.body.password)) {
+app.post('/api/queue/list', multer().none(), asyncHandler(async (req, res) => {
+  if (!(await passwordMatches(req.body.password))) {
     return res.status(401).json({ error: 'Wrong password' });
   }
-  res.json(readQueue());
-});
+  res.json(await readQueue());
+}));
 
-app.post('/api/queue/accept', multer().none(), (req, res) => {
-  if (!passwordMatches(req.body.password)) {
+app.post('/api/queue/accept', multer().none(), asyncHandler(async (req, res) => {
+  if (!(await passwordMatches(req.body.password))) {
     return res.status(401).json({ error: 'Wrong password' });
   }
-  const queue = readQueue();
-  const item = queue.find((q) => q.id === req.body.id);
-  if (!item) return res.status(404).json({ error: 'Not found' });
-  item.status = 'approved';
-  writeQueue(queue);
+  const { rows } = await pool.query("UPDATE queue SET status = 'approved' WHERE id = $1 RETURNING id", [req.body.id]);
+  if (!rows.length) return res.status(404).json({ error: 'Not found' });
   res.json({ success: true });
-});
+}));
 
-app.post('/api/queue/deny', multer().none(), (req, res) => {
-  if (!passwordMatches(req.body.password)) {
+app.post('/api/queue/deny', multer().none(), asyncHandler(async (req, res) => {
+  if (!(await passwordMatches(req.body.password))) {
     return res.status(401).json({ error: 'Wrong password' });
   }
-  const queue = readQueue();
-  const idx = queue.findIndex((q) => q.id === req.body.id);
-  if (idx === -1) return res.status(404).json({ error: 'Not found' });
-  const [removed] = queue.splice(idx, 1);
-  deleteUploadFile(removed);
-  writeQueue(queue);
+  const { rows } = await pool.query('DELETE FROM queue WHERE id = $1 RETURNING url', [req.body.id]);
+  if (!rows.length) return res.status(404).json({ error: 'Not found' });
+  await deletePhotoFromUrl(rows[0].url);
   res.json({ success: true });
-});
+}));
 
-app.post('/api/change-password', multer().none(), (req, res) => {
-  if (!passwordMatches(req.body.currentPassword)) {
+app.post('/api/change-password', multer().none(), asyncHandler(async (req, res) => {
+  if (!(await passwordMatches(req.body.currentPassword))) {
     return res.status(401).json({ error: 'Current password is incorrect' });
   }
   if (!req.body.newPassword || req.body.newPassword.length < 4) {
     return res.status(400).json({ error: 'New password must be at least 4 characters' });
   }
-  writeStoredPassword(req.body.newPassword);
+  await writeStoredPassword(req.body.newPassword);
   res.json({ success: true });
-});
+}));
 
 // Catches anything unexpected so clients get clean JSON instead of an
 // Express-generated HTML page with a stack trace (which leaks file paths).
@@ -337,7 +365,12 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-app.listen(PORT, () => {
-  console.log(`Dog of the Day listening on port ${PORT}`);
-  scheduleMidnightAutopilot();
-});
+async function start() {
+  await initDb();
+  app.listen(PORT, () => {
+    console.log(`Dog of the Day listening on port ${PORT}`);
+    scheduleMidnightAutopilot();
+  });
+}
+
+start();

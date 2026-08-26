@@ -4,10 +4,13 @@ A tiny website with one job: show a "dog of the day" photo to everyone who
 visits. It supports manual uploads, public submissions with moderation, and
 an autopilot mode that fetches a random dog if nobody's uploaded one.
 
-The **API and image storage run on Railway** (`server.js`), and the
-**static frontend (`public/`) is hosted on GitHub Pages**, calling the
-Railway API over CORS. You can also just use the Railway URL directly for
-everything — GitHub Pages is optional, purely for a nicer/free frontend URL.
+The **API runs on Railway** (`server.js`), storing everything — the current
+dog, history, the submission queue, the admin password, and the photos
+themselves — in a **Postgres database** so it all survives redeploys and
+restarts. The **static frontend (`public/`) is hosted on GitHub Pages**,
+calling the Railway API over CORS. You can also just use the Railway URL
+directly for everything — GitHub Pages is optional, purely for a nicer/free
+frontend URL.
 
 ## Pages
 
@@ -28,22 +31,23 @@ everything — GitHub Pages is optional, purely for a nicer/free frontend URL.
 
 ## Running locally
 
+Requires a Postgres database. If you have one running locally:
+
 ```bash
 npm install
-ADMIN_PASSWORD=changeme npm start
+ADMIN_PASSWORD=changeme DATABASE_URL=postgres://user:pass@localhost:5432/dood npm start
 ```
 
-Then open `http://localhost:3000` and the pages listed above. Uploaded
-photos and all the JSON state (current dog, history, queue, changed
-password) live under `data/` (gitignored) so they survive local restarts.
+Tables are created automatically on startup if they don't exist. Then open
+`http://localhost:3000` and the pages listed above.
 
 ## Environment variables
 
 | Variable              | Description                                   |
 |------------------------|------------------------------------------------|
+| `DATABASE_URL`         | Postgres connection string. Required — this is where everything is stored. |
 | `ADMIN_PASSWORD`       | Initial admin password. Can be changed later from `/admin/` (see below); this env var is only the fallback used when no password has been changed yet. |
 | `PORT`                 | Port to listen on (Railway sets this automatically). |
-| `DATA_DIR`             | Where uploaded photos and all JSON state are stored. Defaults to `./data`. |
 | `CORS_ORIGIN`          | Origin allowed to call the API (e.g. `https://<you>.github.io`). Defaults to `*`. |
 | `AUTOPILOT_ENABLED`    | Set to `false` to disable automatic picks entirely (manual upload and the queue still work). Defaults to enabled. |
 | `HISTORY_MAX_ENTRIES`  | How many past dogs to keep in `/history/` before dropping the oldest. Defaults to `60`. |
@@ -51,10 +55,8 @@ password) live under `data/` (gitignored) so they survive local restarts.
 ## Changing the admin password
 
 Go to `/admin/`, scroll to **Change password**, and enter the current
-password plus a new one. This is stored as a salted hash in `DATA_DIR`, so
-**without a persistent volume on Railway, it reverts to `ADMIN_PASSWORD` on
-the next restart** — same limitation as the current photo and queue (see
-below).
+password plus a new one. This is stored as a salted hash in the database,
+so it persists across restarts and redeploys just like everything else.
 
 ## Deploying to Railway
 
@@ -62,16 +64,21 @@ below).
 2. In Railway, create a new project → **Deploy from GitHub repo** → pick this repo.
    Railway will detect the Node app via Nixpacks and use `railway.toml` for the
    start command automatically.
-3. Set the `ADMIN_PASSWORD` environment variable in the Railway service settings.
-4. **Recommended:** Railway's filesystem is ephemeral across deploys/restarts.
-   Add a [Volume](https://docs.railway.com/reference/volumes) to the service and
-   mount it at `/app/data`, then set `DATA_DIR=/app/data`. Without this, every
-   restart wipes the current photo, history, queue, and any changed password
-   back to their defaults.
-5. Deploy. Note the Railway URL Railway gives you (e.g.
+3. Add a **Postgres database** to the same project: **+ New → Database → Add
+   PostgreSQL**. Railway provisions it as its own persistent service.
+4. In your app service's **Variables** tab, add a reference to the Postgres
+   database's connection string as `DATABASE_URL` (Railway usually offers this
+   as "Add Reference" when you start typing a variable name — pick the
+   Postgres service's `DATABASE_URL`).
+5. Set the `ADMIN_PASSWORD` environment variable in the app service too.
+6. Deploy. Note the Railway URL Railway gives you (e.g.
    `https://dood-production.up.railway.app`) — you'll need it below. At this
    point the app already fully works at that URL directly; GitHub Pages below
    is just for a nicer frontend URL.
+
+Because everything lives in Postgres (a separate, persistent Railway
+service), the current dog, history, queue, and password all survive app
+redeploys and restarts — no volume needed.
 
 ## Hosting the frontend on GitHub Pages
 
