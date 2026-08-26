@@ -54,6 +54,8 @@
     text-decoration: none;
   }
   #password-form button { background: #a55; }
+  #week-autopilot-form button, #both-autopilot-form button { background: #567; }
+  #both-form button, #both-autopilot-form button { background: #96c; }
 </style>
 </head>
 <body>
@@ -79,13 +81,43 @@
 
   <hr>
 
+  <h1>Upload Dog of the Week</h1>
+  <form id="week-form">
+    <input type="password" name="password" placeholder="Admin password" required>
+    <input type="file" name="photo" accept="image/png,image/jpeg,image/gif,image/webp" required>
+    <input type="text" name="name" placeholder="Dog's name" maxlength="80" required>
+    <input type="text" name="caption" placeholder="Caption (optional)" maxlength="200">
+    <button type="submit">Upload</button>
+  </form>
+  <div id="week-status"></div>
+
+  <form id="week-autopilot-form">
+    <input type="password" name="password" placeholder="Admin password" required>
+    <button type="submit">🎲 Get a random week dog now</button>
+  </form>
+  <div id="week-autopilot-status"></div>
+  <p class="hint">Dog of the Week updates automatically every Monday at midnight if you haven't uploaded one that week.</p>
+
+  <hr>
+
+  <h1>Update Both at Once</h1>
+  <form id="both-form">
+    <input type="password" name="password" placeholder="Admin password" required>
+    <input type="file" name="photo" accept="image/png,image/jpeg,image/gif,image/webp" required>
+    <input type="text" name="name" placeholder="Dog's name" maxlength="80" required>
+    <input type="text" name="caption" placeholder="Caption (optional)" maxlength="200">
+    <button type="submit">Set as both Day and Week</button>
+  </form>
+  <div id="both-status"></div>
+
+  <hr>
+
   <form id="password-form">
     <input type="password" name="currentPassword" placeholder="Current password" required>
     <input type="password" name="newPassword" placeholder="New password" minlength="4" required>
     <input type="password" name="confirmPassword" placeholder="Confirm new password" minlength="4" required>
     <button type="submit">Change password</button>
   </form>
-  <p class="hint">Note: without persistent storage set up on Railway, a changed password reverts to the original on the next restart.</p>
   <div id="password-status"></div>
 
   <script src="../config.js"></script>
@@ -131,6 +163,69 @@
         autopilotStatus.textContent = err.name === 'TimeoutError' || err.name === 'AbortError'
           ? 'Request timed out — check your connection and try again.'
           : 'Request failed — check your connection and try again.';
+      }
+    });
+
+    const weekForm = document.getElementById('week-form');
+    const weekStatus = document.getElementById('week-status');
+    weekForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      weekStatus.textContent = 'Uploading...';
+      try {
+        const res = await fetch(`${API_BASE}/api/upload-week`, { method: 'POST', body: new FormData(weekForm), signal: AbortSignal.timeout(60000) });
+        const data = await res.json();
+        if (!res.ok) {
+          weekStatus.textContent = `Error: ${data.error || 'upload failed'}`;
+          return;
+        }
+        weekStatus.textContent = 'Uploaded! The homepage is now updated.';
+        weekForm.reset();
+      } catch (err) {
+        weekStatus.textContent = err.name === 'TimeoutError' || err.name === 'AbortError'
+          ? 'Upload timed out — check your connection and try again.'
+          : 'Upload failed — check your connection and try again.';
+      }
+    });
+
+    const weekAutopilotForm = document.getElementById('week-autopilot-form');
+    const weekAutopilotStatus = document.getElementById('week-autopilot-status');
+    weekAutopilotForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      weekAutopilotStatus.textContent = 'Fetching a dog...';
+      try {
+        const res = await fetch(`${API_BASE}/api/autopilot-week`, { method: 'POST', body: new FormData(weekAutopilotForm), signal: AbortSignal.timeout(60000) });
+        const data = await res.json();
+        if (!res.ok) {
+          weekAutopilotStatus.textContent = `Error: ${data.error || 'failed'}`;
+          return;
+        }
+        weekAutopilotStatus.textContent = `Got it! ${data.name} is now the dog of the week.`;
+        weekAutopilotForm.reset();
+      } catch (err) {
+        weekAutopilotStatus.textContent = err.name === 'TimeoutError' || err.name === 'AbortError'
+          ? 'Request timed out — check your connection and try again.'
+          : 'Request failed — check your connection and try again.';
+      }
+    });
+
+    const bothForm = document.getElementById('both-form');
+    const bothStatus = document.getElementById('both-status');
+    bothForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      bothStatus.textContent = 'Uploading...';
+      try {
+        const res = await fetch(`${API_BASE}/api/upload-both`, { method: 'POST', body: new FormData(bothForm), signal: AbortSignal.timeout(60000) });
+        const data = await res.json();
+        if (!res.ok) {
+          bothStatus.textContent = `Error: ${data.error || 'upload failed'}`;
+          return;
+        }
+        bothStatus.textContent = `Uploaded! ${data.name} is now both the dog of the day and the week.`;
+        bothForm.reset();
+      } catch (err) {
+        bothStatus.textContent = err.name === 'TimeoutError' || err.name === 'AbortError'
+          ? 'Upload timed out — check your connection and try again.'
+          : 'Upload failed — check your connection and try again.';
       }
     });
 

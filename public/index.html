@@ -11,37 +11,71 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
     min-height: 100vh;
     margin: 0;
     background: #fafafa;
     color: #222;
     text-align: center;
-    padding: 2rem 1rem;
+    padding: 2rem 0;
     box-sizing: border-box;
   }
-  h1 { margin-bottom: 1rem; }
-  #name { margin-top: 1rem; font-size: 1.4rem; font-weight: 600; }
-  #photo {
+  h1 { margin: 0 0 1rem; }
+  #swipe-container {
+    display: flex;
+    width: 100%;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  #swipe-container::-webkit-scrollbar { display: none; }
+  .slide {
+    flex: 0 0 100%;
+    scroll-snap-align: start;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 1rem;
+    box-sizing: border-box;
+  }
+  .name { margin-top: 1rem; font-size: 1.4rem; font-weight: 600; }
+  .photo {
     max-width: min(90vw, 500px);
-    max-height: 60vh;
+    max-height: 55vh;
     border-radius: 12px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.15);
   }
-  #caption { margin-top: 1rem; font-size: 1.1rem; }
-  #updated { margin-top: 0.5rem; font-size: 0.85rem; color: #888; }
-  #empty {
+  .caption { margin-top: 1rem; font-size: 1.1rem; }
+  .updated { margin-top: 0.5rem; font-size: 0.85rem; color: #888; }
+  .empty {
     max-width: min(90vw, 500px);
-    max-height: 60vh;
+    max-height: 55vh;
     border-radius: 12px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.15);
     background: #fff;
     padding: 2rem;
     box-sizing: border-box;
   }
-  #empty svg { width: 180px; height: 180px; }
-  #empty p { color: #888; margin: 1rem 0 0; }
+  .empty svg { width: 150px; height: 150px; }
+  .empty p { color: #888; margin: 1rem 0 0; }
   a { color: inherit; }
+  #dots {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ddd;
+    cursor: pointer;
+    border: none;
+    padding: 0;
+  }
+  .dot.active { background: #567; }
+  #swipe-hint { font-size: 0.8rem; color: #bbb; margin-top: 0.4rem; }
   .footer-link {
     margin-top: 1rem;
     font-size: 0.85rem;
@@ -105,24 +139,54 @@
 </style>
 </head>
 <body>
-  <h1>🐶 Dog of the Day</h1>
-  <div id="content">
-    <div id="empty">
-      <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-        <ellipse cx="60" cy="70" rx="22" ry="30" fill="#c98a4b" transform="rotate(-25 60 70)"/>
-        <ellipse cx="140" cy="70" rx="22" ry="30" fill="#c98a4b" transform="rotate(25 140 70)"/>
-        <circle cx="100" cy="105" r="65" fill="#e3a96b"/>
-        <ellipse cx="100" cy="125" rx="35" ry="28" fill="#fbe8d3"/>
-        <circle cx="75" cy="95" r="9" fill="#3a2a20"/>
-        <circle cx="125" cy="95" r="9" fill="#3a2a20"/>
-        <ellipse cx="100" cy="120" rx="10" ry="7" fill="#3a2a20"/>
-        <path d="M100 127 Q100 138 88 138" stroke="#3a2a20" stroke-width="4" fill="none" stroke-linecap="round"/>
-        <path d="M78 148 Q100 165 122 148" stroke="#3a2a20" stroke-width="4" fill="none" stroke-linecap="round"/>
-        <ellipse cx="100" cy="158" rx="12" ry="16" fill="#ef8c9e"/>
-      </svg>
-      <p>This is a placeholder — the real dog of the day will show up here once one's uploaded.</p>
-    </div>
+  <div id="swipe-container">
+    <section class="slide" id="day-slide">
+      <h1>🐶 Dog of the Day</h1>
+      <div class="content" id="day-content">
+        <div class="empty">
+          <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+            <ellipse cx="60" cy="70" rx="22" ry="30" fill="#c98a4b" transform="rotate(-25 60 70)"/>
+            <ellipse cx="140" cy="70" rx="22" ry="30" fill="#c98a4b" transform="rotate(25 140 70)"/>
+            <circle cx="100" cy="105" r="65" fill="#e3a96b"/>
+            <ellipse cx="100" cy="125" rx="35" ry="28" fill="#fbe8d3"/>
+            <circle cx="75" cy="95" r="9" fill="#3a2a20"/>
+            <circle cx="125" cy="95" r="9" fill="#3a2a20"/>
+            <ellipse cx="100" cy="120" rx="10" ry="7" fill="#3a2a20"/>
+            <path d="M100 127 Q100 138 88 138" stroke="#3a2a20" stroke-width="4" fill="none" stroke-linecap="round"/>
+            <path d="M78 148 Q100 165 122 148" stroke="#3a2a20" stroke-width="4" fill="none" stroke-linecap="round"/>
+            <ellipse cx="100" cy="158" rx="12" ry="16" fill="#ef8c9e"/>
+          </svg>
+          <p>This is a placeholder — the real dog of the day will show up here once one's uploaded.</p>
+        </div>
+      </div>
+    </section>
+    <section class="slide" id="week-slide">
+      <h1>📅 Dog of the Week</h1>
+      <div class="content" id="week-content">
+        <div class="empty">
+          <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+            <ellipse cx="60" cy="70" rx="22" ry="30" fill="#c98a4b" transform="rotate(-25 60 70)"/>
+            <ellipse cx="140" cy="70" rx="22" ry="30" fill="#c98a4b" transform="rotate(25 140 70)"/>
+            <circle cx="100" cy="105" r="65" fill="#e3a96b"/>
+            <ellipse cx="100" cy="125" rx="35" ry="28" fill="#fbe8d3"/>
+            <circle cx="75" cy="95" r="9" fill="#3a2a20"/>
+            <circle cx="125" cy="95" r="9" fill="#3a2a20"/>
+            <ellipse cx="100" cy="120" rx="10" ry="7" fill="#3a2a20"/>
+            <path d="M100 127 Q100 138 88 138" stroke="#3a2a20" stroke-width="4" fill="none" stroke-linecap="round"/>
+            <path d="M78 148 Q100 165 122 148" stroke="#3a2a20" stroke-width="4" fill="none" stroke-linecap="round"/>
+            <ellipse cx="100" cy="158" rx="12" ry="16" fill="#ef8c9e"/>
+          </svg>
+          <p>This is a placeholder — the real dog of the week will show up here once one's uploaded.</p>
+        </div>
+      </div>
+    </section>
   </div>
+  <div id="dots">
+    <button class="dot active" type="button" data-index="0" aria-label="Dog of the Day"></button>
+    <button class="dot" type="button" data-index="1" aria-label="Dog of the Week"></button>
+  </div>
+  <div id="swipe-hint">← swipe →</div>
+
   <a class="footer-link" href="admin/">Upload a new dog →</a>
   <a class="footer-link" href="request/">Request a dog →</a>
   <a class="footer-link" href="history/">Past dogs →</a>
@@ -148,20 +212,39 @@
       if (e.target === aboutOverlay) aboutOverlay.classList.remove('open');
     });
 
+    const swipeContainer = document.getElementById('swipe-container');
+    const dots = document.querySelectorAll('.dot');
+    dots.forEach((dot, i) => {
+      dot.addEventListener('click', () => {
+        swipeContainer.scrollTo({ left: i * swipeContainer.clientWidth, behavior: 'smooth' });
+      });
+    });
+    swipeContainer.addEventListener('scroll', () => {
+      const index = Math.round(swipeContainer.scrollLeft / swipeContainer.clientWidth);
+      dots.forEach((dot, i) => dot.classList.toggle('active', i === index));
+    });
+
     const API_BASE = window.DOOD_API_BASE || '';
+
+    function renderDog(contentEl, data, fallbackLabel) {
+      if (!data || !data.url) return;
+      const imgSrc = data.url.startsWith('http') ? data.url : `${API_BASE}${data.url}`;
+      contentEl.innerHTML = `
+        <img class="photo" src="${imgSrc}" alt="${data.name || fallbackLabel}">
+        ${data.name ? `<div class="name">${data.name}</div>` : ''}
+        ${data.caption ? `<div class="caption">${data.caption}</div>` : ''}
+        <div class="updated">Updated ${new Date(data.updatedAt).toLocaleString()}</div>
+      `;
+    }
+
     fetch(`${API_BASE}/api/current`)
       .then((r) => r.json())
-      .then((data) => {
-        if (!data || !data.url) return;
-        const content = document.getElementById('content');
-        const imgSrc = data.url.startsWith('http') ? data.url : `${API_BASE}${data.url}`;
-        content.innerHTML = `
-          <img id="photo" src="${imgSrc}" alt="${data.name || 'Dog of the day'}">
-          ${data.name ? `<div id="name">${data.name}</div>` : ''}
-          ${data.caption ? `<div id="caption">${data.caption}</div>` : ''}
-          <div id="updated">Updated ${new Date(data.updatedAt).toLocaleString()}</div>
-        `;
-      })
+      .then((data) => renderDog(document.getElementById('day-content'), data, 'Dog of the day'))
+      .catch(() => {});
+
+    fetch(`${API_BASE}/api/current-week`)
+      .then((r) => r.json())
+      .then((data) => renderDog(document.getElementById('week-content'), data, 'Dog of the week'))
       .catch(() => {});
   </script>
 </body>

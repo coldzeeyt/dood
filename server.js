@@ -68,6 +68,8 @@ async function setState(key, value) {
 
 const readCurrent = () => getState('current');
 const writeCurrent = (entry) => setState('current', entry);
+const readCurrentWeek = () => getState('current_week');
+const writeCurrentWeek = (entry) => setState('current_week', entry);
 
 async function readHistory() {
   const { rows } = await pool.query(
@@ -154,8 +156,34 @@ async function advanceDog() {
   }
 }
 
+// Advances the weekly dog: always a fresh random pick (the request queue is
+// day-only). The outgoing dog is archived into the same history table as
+// the daily one, guarding against archiving the same entry twice when it
+// was just set for both via /api/upload-both.
+async function advanceWeekDog() {
+  try {
+    const previous = await readCurrentWeek();
+    const entry = await fetchAutopilotDog();
+    await writeCurrentWeek(entry);
+    await archiveToHistory(previous);
+    console.log(`Weekly autopilot picked ${entry.name}`);
+    return entry;
+  } catch (err) {
+    console.error('Advancing week dog failed:', err.message);
+    throw err;
+  }
+}
+
 function isSameLocalDay(a, b) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function startOfWeek(date) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay();
+  d.setDate(d.getDate() + (day === 0 ? -6 : 1) - day);
+  return d;
 }
 
 // Runs autopilot once at server start if there's nothing to show yet, and
@@ -176,6 +204,29 @@ function scheduleMidnightAutopilot() {
     if (isSameLocalDay(updated, now)) return;
     if (now.getHours() === 0 && now.getMinutes() < 5) {
       await advanceDog();
+    }
+  };
+
+  checkAndRun();
+  setInterval(checkAndRun, 60 * 1000);
+}
+
+// Same idea as scheduleMidnightAutopilot, but only advances once per
+// Monday-anchored week, in the few minutes after local midnight on Monday.
+function scheduleWeeklyAutopilot() {
+  if (!AUTOPILOT_ENABLED) return;
+
+  const checkAndRun = async () => {
+    const current = await readCurrentWeek();
+    const now = new Date();
+    if (!current) {
+      await advanceWeekDog();
+      return;
+    }
+    const updated = new Date(current.updatedAt);
+    if (startOfWeek(updated).getTime() === startOfWeek(now).getTime()) return;
+    if (now.getDay() === 1 && now.getHours() === 0 && now.getMinutes() < 5) {
+      await advanceWeekDog();
     }
   };
 
@@ -252,6 +303,10 @@ app.get('/api/history', asyncHandler(async (req, res) => {
   res.json(await readHistory());
 }));
 
+app.get('/api/current-week', asyncHandler(async (req, res) => {
+  res.json(await readCurrentWeek());
+}));
+
 app.post('/api/upload', (req, res, next) => {
   upload.single('photo')(req, res, async (err) => {
     try {
@@ -295,6 +350,89 @@ app.post('/api/autopilot', multer().none(), asyncHandler(async (req, res) => {
     res.status(502).json({ error: 'Could not fetch a dog right now, try again' });
   }
 }));
+
+app.post('/api/upload-week', (req, res, next) => {
+  upload.single('photo')(req, res, async (err) => {
+    try {
+      if (err) return res.status(400).json({ error: err.message });
+      if (!(await passwordMatches(req.body.password))) {
+        return res.status(401).json({ error: 'Wrong password' });
+      }
+      if (!req.file) {
+        return res.status(400).json({ error: 'No image uploaded' });
+      }
+      if (!req.body.name || !req.body.name.trim()) {
+        return res.status(400).json({ error: "Dog's name is required" });
+      }
+
+      const url = await savePhoto(req.file.buffer, req.file.mimetype);
+      const previous = await readCurrentWeek();
+      const entry = {
+        url,
+        name: req.body.name.trim().slice(0, 80),
+        caption: (req.body.caption || '').slice(0, 200),
+        updatedAt: new Date().toISOString(),
+      };
+      await writeCurrentWeek(entry);
+      await archiveToHistory(previous);
+
+      res.json(entry);
+    } catch (e) {
+      next(e);
+    }
+  });
+});
+
+app.post('/api/autopilot-week', multer().none(), asyncHandler(async (req, res) => {
+  if (!(await passwordMatches(req.body.password))) {
+    return res.status(401).json({ error: 'Wrong password' });
+  }
+  try {
+    const entry = await advanceWeekDog();
+    res.json(entry);
+  } catch {
+    res.status(502).json({ error: 'Could not fetch a dog right now, try again' });
+  }
+}));
+
+app.post('/api/upload-both', (req, res, next) => {
+  upload.single('photo')(req, res, async (err) => {
+    try {
+      if (err) return res.status(400).json({ error: err.message });
+      if (!(await passwordMatches(req.body.password))) {
+        return res.status(401).json({ error: 'Wrong password' });
+      }
+      if (!req.file) {
+        return res.status(400).json({ error: 'No image uploaded' });
+      }
+      if (!req.body.name || !req.body.name.trim()) {
+        return res.status(400).json({ error: "Dog's name is required" });
+      }
+
+      const url = await savePhoto(req.file.buffer, req.file.mimetype);
+      const entry = {
+        url,
+        name: req.body.name.trim().slice(0, 80),
+        caption: (req.body.caption || '').slice(0, 200),
+        updatedAt: new Date().toISOString(),
+      };
+
+      const previousDay = await readCurrent();
+      const previousWeek = await readCurrentWeek();
+
+      await writeCurrent(entry);
+      await archiveToHistory(previousDay);
+      await writeCurrentWeek(entry);
+      if (!previousWeek || !previousDay || previousWeek.url !== previousDay.url) {
+        await archiveToHistory(previousWeek);
+      }
+
+      res.json(entry);
+    } catch (e) {
+      next(e);
+    }
+  });
+});
 
 app.post('/api/request', (req, res, next) => {
   upload.single('photo')(req, res, async (err) => {
@@ -370,6 +508,7 @@ async function start() {
   app.listen(PORT, () => {
     console.log(`Dog of the Day listening on port ${PORT}`);
     scheduleMidnightAutopilot();
+    scheduleWeeklyAutopilot();
   });
 }
 

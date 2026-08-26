@@ -1,8 +1,9 @@
 # dood — Dog of the Day
 
-A tiny website with one job: show a "dog of the day" photo to everyone who
-visits. It supports manual uploads, public submissions with moderation, and
-an autopilot mode that fetches a random dog if nobody's uploaded one.
+A tiny website with one job: show a "dog of the day" (and "dog of the
+week") photo to everyone who visits. Swipe between them on the homepage.
+It supports manual uploads, public submissions with moderation, and an
+autopilot mode that fetches a random dog if nobody's uploaded one.
 
 The **API runs on Railway** (`server.js`), storing everything — the current
 dog, history, the submission queue, the admin password, and the photos
@@ -16,11 +17,11 @@ frontend URL.
 
 | Path | What it's for |
 |------|----------------|
-| `/` | The homepage — shows today's dog, its name, and a caption. Has an "About the Creator" popup and links to the pages below. |
-| `/admin/` | Password-protected: upload a dog directly, trigger "Get a random dog now", review/moderate submitted dogs, and change the admin password. |
+| `/` | The homepage — swipe (or tap the dots) between the Dog of the Day and Dog of the Week panels. Has an "About the Creator" popup and links to the pages below. |
+| `/admin/` | Password-protected: upload a Day dog, upload a Week dog, upload one photo as **both** at once, trigger random picks for either, review/moderate submitted dogs, and change the admin password. |
 | `/admin/queue/` | Password-protected: accept or deny dogs submitted via `/request/` before they can go live. |
-| `/request/` | Public, no password: anyone can submit a dog photo + name. It sits as "pending" until approved in `/admin/queue/`. |
-| `/history/` | Public: a grid of past dogs of the day. |
+| `/request/` | Public, no password: anyone can submit a dog photo + name for the **Day** rotation. It sits as "pending" until approved in `/admin/queue/`. |
+| `/history/` | Public: a grid of past dogs (both Day and Week transitions). |
 
 ## How a new "dog of the day" gets picked
 
@@ -28,6 +29,17 @@ frontend URL.
 2. **The queue**: dogs submitted via `/request/` start "pending" and don't show up anywhere public until you **accept** them in `/admin/queue/`. Denying one deletes it.
 3. **Autopilot** advances to the next dog either automatically (once per day, in the few minutes after local midnight, only if nobody's uploaded that day) or on demand via the "🎲 Get a random dog now" button in `/admin/`. Either way, it first checks the queue for the oldest **approved** submission; only if there isn't one does it fetch a random dog photo from the free [Dog CEO API](https://dog.ceo/dog-api/) and pair it with a random name from a built-in list (that API has no real names or dogs — the photo is real, the name is made up).
 4. Whatever dog gets replaced is archived into `/history/` (its photo is kept, not deleted) instead of being thrown away, capped at `HISTORY_MAX_ENTRIES` (oldest dropped first).
+
+## Dog of the Week
+
+Works the same way as the Day, independently, with its own upload and its
+own "🎲 Get a random week dog now" button in `/admin/` — except there's no
+public request queue for it (that's Day-only), so its autopilot always
+fetches a fresh random dog rather than checking a queue. It auto-advances
+once per week, in the few minutes after local midnight on **Monday**.
+
+To set one photo as both the Day and Week dog at once, use **Update Both
+at Once** in `/admin/` — one upload, two rotations updated together.
 
 ## Running locally
 
