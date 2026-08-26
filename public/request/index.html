@@ -63,14 +63,20 @@
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       status.textContent = 'Submitting...';
-      const res = await fetch(`${API_BASE}/api/request`, { method: 'POST', body: new FormData(form) });
-      const data = await res.json();
-      if (!res.ok) {
-        status.textContent = `Error: ${data.error || 'submission failed'}`;
-        return;
+      try {
+        const res = await fetch(`${API_BASE}/api/request`, { method: 'POST', body: new FormData(form), signal: AbortSignal.timeout(60000) });
+        const data = await res.json();
+        if (!res.ok) {
+          status.textContent = `Error: ${data.error || 'submission failed'}`;
+          return;
+        }
+        status.textContent = `Thanks! Your dog is #${data.position} in the queue.`;
+        form.reset();
+      } catch (err) {
+        status.textContent = err.name === 'TimeoutError' || err.name === 'AbortError'
+          ? 'Submission timed out — check your connection and try again.'
+          : 'Submission failed — check your connection and try again.';
       }
-      status.textContent = `Thanks! Your dog is #${data.position} in the queue.`;
-      form.reset();
     });
   </script>
 </body>

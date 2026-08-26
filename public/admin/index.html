@@ -77,14 +77,20 @@
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       status.textContent = 'Uploading...';
-      const res = await fetch(`${API_BASE}/api/upload`, { method: 'POST', body: new FormData(form) });
-      const data = await res.json();
-      if (!res.ok) {
-        status.textContent = `Error: ${data.error || 'upload failed'}`;
-        return;
+      try {
+        const res = await fetch(`${API_BASE}/api/upload`, { method: 'POST', body: new FormData(form), signal: AbortSignal.timeout(60000) });
+        const data = await res.json();
+        if (!res.ok) {
+          status.textContent = `Error: ${data.error || 'upload failed'}`;
+          return;
+        }
+        status.textContent = 'Uploaded! The homepage is now updated.';
+        form.reset();
+      } catch (err) {
+        status.textContent = err.name === 'TimeoutError' || err.name === 'AbortError'
+          ? 'Upload timed out — check your connection and try again.'
+          : 'Upload failed — check your connection and try again.';
       }
-      status.textContent = 'Uploaded! The homepage is now updated.';
-      form.reset();
     });
 
     const autopilotForm = document.getElementById('autopilot-form');
@@ -92,14 +98,20 @@
     autopilotForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       autopilotStatus.textContent = 'Fetching a dog...';
-      const res = await fetch(`${API_BASE}/api/autopilot`, { method: 'POST', body: new FormData(autopilotForm) });
-      const data = await res.json();
-      if (!res.ok) {
-        autopilotStatus.textContent = `Error: ${data.error || 'failed'}`;
-        return;
+      try {
+        const res = await fetch(`${API_BASE}/api/autopilot`, { method: 'POST', body: new FormData(autopilotForm), signal: AbortSignal.timeout(60000) });
+        const data = await res.json();
+        if (!res.ok) {
+          autopilotStatus.textContent = `Error: ${data.error || 'failed'}`;
+          return;
+        }
+        autopilotStatus.textContent = `Got it! ${data.name} is now the dog of the day.`;
+        autopilotForm.reset();
+      } catch (err) {
+        autopilotStatus.textContent = err.name === 'TimeoutError' || err.name === 'AbortError'
+          ? 'Request timed out — check your connection and try again.'
+          : 'Request failed — check your connection and try again.';
       }
-      autopilotStatus.textContent = `Got it! ${data.name} is now the dog of the day.`;
-      autopilotForm.reset();
     });
   </script>
 </body>
