@@ -207,6 +207,13 @@ app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   next();
 });
+// multer only populates req.body for actual multipart/form-data requests,
+// leaving it undefined otherwise (e.g. a bare POST with no body) — default
+// it to an empty object so route handlers can safely read req.body.<field>.
+app.use((req, res, next) => {
+  if (!req.body) req.body = {};
+  next();
+});
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(UPLOADS_DIR));
 
@@ -327,6 +334,13 @@ app.post('/api/change-password', multer().none(), (req, res) => {
   }
   writeStoredPassword(req.body.newPassword);
   res.json({ success: true });
+});
+
+// Catches anything unexpected so clients get clean JSON instead of an
+// Express-generated HTML page with a stack trace (which leaks file paths).
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ error: 'Internal server error' });
 });
 
 app.listen(PORT, () => {
